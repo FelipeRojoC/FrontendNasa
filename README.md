@@ -55,3 +55,25 @@ YEAR=2020 ./scripts/download_population.sh  # any year from 2015 to 2030
 3. Restart the session and approve the `runpod` server when asked.
 
 `scripts/runpod_mcp.mjs` reads the key from `.env` and passes only that variable to the server.
+
+## Building the unified hotspot table
+
+All downloads (yearly country files and monthly API files) come with slightly different columns.
+`scripts/build_hotspots.py` merges them into one Parquet dataset with a single schema:
+
+```bash
+pip install -r requirements.txt
+./scripts/download_boundaries.sh
+python scripts/build_hotspots.py
+```
+
+- Output: `NASA_Data_Sources/processed/hotspots/year=YYYY/` (about 8.0 million rows, takes about 2 minutes).
+- Common names for MODIS and VIIRS columns (`bright_mir_k`, `bright_tir_k`, `frp_mw`, ...), normalised
+  satellite names, UTC time, `processing` (SP or NRT) and a common `confidence_level` (low, nominal, high).
+- Every point gets `country` and `admin1` (region or province) from the same boundary polygons, so
+  yearly and API rows use identical borders. FIRMS' own label is kept as `country_firms`; the two agree
+  on 99.98% of yearly rows. API rows outside Chile and Argentina (bounding box) are dropped.
+- Boundaries: Chile from [geoBoundaries](https://www.geoboundaries.org/) (CC BY 3.0 IGO), Argentina from
+  the [Instituto Geográfico Nacional](https://www.ign.gob.ar/). geoBoundaries' Argentina file is not used
+  because it is missing Entre Ríos.
+- It does not harmonise MODIS against VIIRS. See `docs/eda-plan.md` for the next steps.
