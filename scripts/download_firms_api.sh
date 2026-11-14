@@ -105,6 +105,8 @@ while IFS=: read -r folder sp nrt start; do
       [ "$days" -gt "$CHUNK_DAYS" ] && days="$CHUNK_DAYS"
       if fetch_chunk "$source" "$(e2d "$d")" "$days" "$chunk"; then
         if [ -s "$tmp" ]; then tail -n +2 "$chunk" >>"$tmp"; else cat "$chunk" >"$tmp"; fi
+        # The API omits the final newline; without this the next chunk's first row is glued on.
+        [ -s "$tmp" ] && [ -n "$(tail -c1 "$tmp")" ] && echo >>"$tmp"
       else
         ok=0
         break
