@@ -31,3 +31,13 @@ The yearly files stop at 2025 and do not include NOAA-21. To fill that gap:
 - Uses standard processing (SP) while available and near-real-time (NRT) after that. Months not fully covered by SP are re-downloaded on every run, because NRT data gets revised.
 - The query is a bounding box around Chile and Argentina, so it includes points from neighbouring countries. Clip to the country borders when processing.
 - NOAA-21 files are not in the yearly layout (`<SENSOR>/<Country>/`), they only exist under `API_bbox/`.
+
+## Runpod MCP server
+
+`.mcp.json` registers the official [Runpod MCP server](https://github.com/runpod/runpod-mcp) (pinned to 4.12.0) so Claude Code can manage pods, endpoints and volumes.
+
+1. Create an API key in the Runpod console (Settings → API Keys).
+2. Add `RUNPOD_API_KEY=` to your `.env` (see `.env.example`). The key never leaves your machine and is not committed.
+3. Restart the session and approve the `runpod` server when asked.
+
+`scripts/runpod_mcp.mjs` reads the key from `.env` and passes only that variable to the server.
