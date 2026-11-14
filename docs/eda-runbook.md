@@ -8,7 +8,7 @@ status" part of `CLAUDE.md` is older than this file: where they disagree, this f
 
 ## Where the EDA stands
 
-6 of the 9 blocks are done.
+7 of the 9 blocks are done.
 
 | Block | Topic | Status | Where |
 |---|---|---|---|
@@ -17,7 +17,7 @@ status" part of `CLAUDE.md` is older than this file: where they disagree, this f
 | 2 | Observation effort | Not started | Only the outage days exist (from block 1) |
 | 3 | MODIS against VIIRS | **Done** | `notebooks/03_modis_vs_viirs.ipynb`, `docs/findings/03-modis-vs-viirs.md`, `scripts/harmonize.py` |
 | 4 | Burn calendar | **Done, per sensor** | `notebooks/04_calendar.ipynb`, `docs/findings/04-calendar.md` |
-| 5 | Spatial patterns | Not started | |
+| 5 | Spatial patterns | **Done** | `notebooks/05_spatial.ipynb`, `docs/findings/05-spatial.md` |
 | 6 | Past fire cases | **Done** | `notebooks/06_case_studies.ipynb`, `docs/findings/06-case-studies.md` |
 | 7 | Population (WorldPop) | Not started | WorldPop is not downloaded |
 | 8 | Risk model inputs | **Done as scripts** | `scripts/risk_baseline.py`, `scripts/risk_model.py`, `scripts/risk_weather.py` |
