@@ -8,7 +8,7 @@ status" part of `CLAUDE.md` is older than this file: where they disagree, this f
 
 ## Where the EDA stands
 
-7 of the 9 blocks are done.
+8 of the 9 blocks are done.
 
 | Block | Topic | Status | Where |
 |---|---|---|---|
@@ -19,7 +19,7 @@ status" part of `CLAUDE.md` is older than this file: where they disagree, this f
 | 4 | Burn calendar | **Done, per sensor** | `notebooks/04_calendar.ipynb`, `docs/findings/04-calendar.md` |
 | 5 | Spatial patterns | **Done** | `notebooks/05_spatial.ipynb`, `docs/findings/05-spatial.md` |
 | 6 | Past fire cases | **Done** | `notebooks/06_case_studies.ipynb`, `docs/findings/06-case-studies.md` |
-| 7 | Population (WorldPop) | Not started | WorldPop is not downloaded |
+| 7 | Population (WorldPop) | **Done** | `notebooks/07_population.ipynb`, `docs/findings/07-population.md`, `processed/population/cells.parquet` |
 | 8 | Risk model inputs | **Done as scripts** | `scripts/risk_baseline.py`, `scripts/risk_model.py`, `scripts/risk_weather.py` |
 
 Open ends inside the done blocks:
