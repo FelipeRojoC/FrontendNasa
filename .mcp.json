@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "runpod": {
+      "command": "node",
+      "args": ["scripts/runpod_mcp.mjs"]
+    }
+  }
+}
