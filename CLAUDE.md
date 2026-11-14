@@ -392,6 +392,20 @@ All numbers and the full rules are in `docs/eda-plan.md`. "Local solar time" is 
 - Boundaries are simplified (~100 m tolerance). IGN's Tierra del Fuego polygon includes Malvinas and the
   Antarctic claim.
 
+## Boundary sources
+
+Full table and caveats in `README.md` ("Boundary sources"). Summary:
+
+- **Chile: geoBoundaries** gbOpen CHL ADM1 simplified (William & Mary geoLab, release commit `9469f09`).
+  16 regions. Original data from BCN and OCHA ROLAC. License CC BY 3.0 IGO (credit required).
+- **Argentina: IGN** (Instituto Geográfico Nacional), WFS layer `ign:provincia`. 24 units (23 provinces
+  and CABA), fields `nam` and `in1` (INDEC code). The service allows free reuse and redistribution under
+  Art. 2 of Law 27.275; credit IGN.
+- geoBoundaries' Argentina file is rejected (missing Entre Ríos, "La Roja", coarse geometry).
+- The two sources do not share a border line: small gaps and overlaps along the Andes. First match wins,
+  Argentina checked first. Part of the 1,205 disagreements with FIRMS come from this.
+- Credit both sources in the web app.
+
 ## Gotchas found while building it
 
 - geoBoundaries' Argentina ADM1 is missing Entre Ríos (and misspells La Rioja): do not use it.

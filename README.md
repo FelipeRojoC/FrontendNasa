@@ -73,7 +73,32 @@ python scripts/build_hotspots.py
 - Every point gets `country` and `admin1` (region or province) from the same boundary polygons, so
   yearly and API rows use identical borders. FIRMS' own label is kept as `country_firms`; the two agree
   on 99.98% of yearly rows. API rows outside Chile and Argentina (bounding box) are dropped.
-- Boundaries: Chile from [geoBoundaries](https://www.geoboundaries.org/) (CC BY 3.0 IGO), Argentina from
-  the [Instituto Geográfico Nacional](https://www.ign.gob.ar/). geoBoundaries' Argentina file is not used
-  because it is missing Entre Ríos.
 - It does not harmonise MODIS against VIIRS. See `docs/eda-plan.md` for the next steps.
+
+### Boundary sources
+
+One source per country, because neither covers both well. `scripts/download_boundaries.sh` downloads both
+to `NASA_Data_Sources/boundaries/<Country>.geojson`.
+
+| | Chile | Argentina |
+|---|---|---|
+| Source | [geoBoundaries](https://www.geoboundaries.org/) gbOpen, ADM1 simplified (William & Mary geoLab), pinned to release commit `9469f09` | [Instituto Geográfico Nacional](https://www.ign.gob.ar/) (IGN), WFS layer `ign:provincia` at `wms.ign.gob.ar`, EPSG:4326 |
+| Original data | Biblioteca del Congreso Nacional (BCN), OCHA ROLAC | IGN, Argentina's official mapping agency |
+| Units | 16 regions | 24 (23 provinces and CABA), with name (`nam`) and INDEC code (`in1`) |
+| Size | 8 MB | 112 MB, about 4 million vertices |
+| Terms | CC BY 3.0 IGO: credit the source | Free reuse and redistribution under Art. 2 of Law 27.275 (stated by the WFS service); credit IGN |
+
+Things to know:
+
+- **geoBoundaries' Argentina file is not used:** it is missing Entre Ríos (the Paraná delta, about 343k hotspots
+  in our table), misspells La Rioja as "La Roja" and has one coarse polygon per province.
+- **Chile names come mis-encoded** (`RegiÃ³n`); `build_hotspots.py` fixes them. The file includes Easter Island
+  (in Valparaíso) and no Antarctic territory.
+- **IGN's Tierra del Fuego polygon follows Argentina's official definition:** it includes the Malvinas/Falklands
+  and the Antarctic claim, so the 130 Falklands hotspots are labelled Argentina.
+- **Polygons are simplified to about 100 m** when loaded, well below the 375 m VIIRS pixel.
+- **The two sources do not share a border line**, so small gaps and overlaps remain along the Andes. Where they
+  overlap, the first match wins (Argentina is checked first). This explains part of the 1,205 border
+  disagreements with FIRMS. Points outside both polygons (10,476, mostly coastal) keep FIRMS' country and get
+  no `admin1`.
+- Credit both sources in the web app.
