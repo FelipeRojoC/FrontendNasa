@@ -342,15 +342,45 @@ column. Harmonisation is the job of the EDA and the next step.
 
 - 8,042,380 hotspots after merging (3 exact duplicates and 1,149,423 out-of-country API points dropped).
 - Our country label agrees with FIRMS on 99.98% of yearly rows (1,205 disagree, all at the Chile-Argentina
-  border). 10,476 yearly rows (0.15%, mostly coastal) fall outside the simplified polygons: they keep
-  FIRMS' country and have no `admin1`.
+  border). 10,476 yearly rows (0.15%, mostly coastal; Argentina 9,736, Chile 740) fall outside the
+  simplified polygons: they keep FIRMS' country and have no `admin1`.
 - **VIIRS detects about 4-6 times more points than MODIS per satellite** (2013: Suomi-NPP 261k, Aqua 46k).
 - After clipping, NOAA-21 matches NOAA-20 (2024: 176,590 vs 179,307).
-- MODIS mixes collection versions (`6.03`, `6.2`, `61.03`, `6.1NRT`): check for jumps when it changes.
+- MODIS has one collection version per year: `6.2` in 2000-2017, `6.03` in 2018-2022, `61.03` from 2023 to
+  August 2026, `6.1NRT` from September 2026. The change to `61.03` happens when the orbit drift starts, so
+  check jumps against VIIRS, not with MODIS alone.
+- In 2026, MODIS is SP through August and VIIRS through July. Later months are NRT.
 - In SP rows, static land sources (`fire_type` 2) are about 4% of points.
 - 2020 is the peak year for every satellite.
 - Most points are in northern Argentina (Formosa, Santa Fe, Corrientes, Santiago del Estero, Chaco, Salta).
   La Araucanía is the Chilean region with most points.
+- Days with at least one detection per 0.25° cell narrow the VIIRS / MODIS gap to about 2.8 (2019-2021).
+- 51,236 rows before 2002-07-04 are Terra only (no Aqua yet).
+- Source asymmetries: Easter Island (467 rows) appears only in yearly files, because the API bounding box
+  stops at -76°. Malvinas/Falklands (130 rows) appears only in API files.
+
+## Time handling (measured and decided on 2026-11-14)
+
+All numbers and the full rules are in `docs/eda-plan.md`. "Local solar time" is UTC hour + longitude / 15.
+
+- `acq_datetime`, `acq_date`, `year`, `month` and the `year=` partition are **UTC**. Chile and Argentina
+  are 3 to 5 hours behind.
+- **Day key: `burn_date`** = `date(UTC + longitude / 15 h - 6 h)`, the day from 06:00 to 06:00 local solar
+  time. It is the only cut that splits no satellite pass (0 rows between 04:30 and 07:00). Week, month,
+  year and season (July-June) derive from it. The column does not exist yet: adding it
+  (`scripts/timefields.py`) is the first step of the EDA.
+- Do not count days by civil date: civil midnight splits the Terra night pass (Argentina: 86,043 rows at
+  23 h, 63,529 at 00 h), which affects MODIS only. The UTC date is nearly clean but runs from about 20:00
+  to 20:00 local time.
+- UTC instants for time differences, local solar time for sensor questions, civil time (IANA zone per
+  region, 16 zones) only for display, day of week and reported dates of past fires.
+- Terra and Aqua orbits drift. Terra day pass: about 10.2 h local solar time through 2021, 8.6 h in 2026.
+  Aqua: 13.9 h through 2022, 15.8 h in 2026. VIIRS is stable. Calibrate the harmonisation on 2012-2021.
+- `daynight` follows the sun angle, not the pass.
+- Last complete UTC day: 2026-11-13. November 2026 is partial: compare it only with the same days of
+  other years.
+- Tools: DuckDB needs `SET TimeZone='UTC'`. Never build JS dates from `YYYY-MM-DD` strings. Laptops run
+  on Chile time, servers on UTC.
 
 ## Known limits of the data
 
@@ -373,18 +403,27 @@ column. Harmonisation is the job of the EDA and the next step.
 
 ## EDA: where to start
 
-The first plan is in `docs/eda-plan.md` (quality, MODIS vs VIIRS in the overlap, temporal patterns /
-burn calendar, spatial patterns, inputs for the risk model). Decisions still open before the new plan:
+The plan is in `docs/eda-plan.md`: time rules, the time fields to add to the table, and 9 blocks
+(0 time audit, 1 quality, 2 observation effort, 3 MODIS vs VIIRS, 4 burn calendar, 5 spatial, 6 past fire
+cases, 7 population, 8 risk model inputs). The time fields and block 0 come first; the other blocks can be
+split among the team. No block has been run yet.
 
-- Grid resolution (start with 0.25°, also test 0.1°) and time step (month, then week).
+Decided: the day key is `burn_date`. Still open (the plan has a proposal for each):
+
+- Week definition (proposal: 52 fixed 7-day bins) and year (calendar year and July-June season).
+- Grid resolution (0.25°, also test 0.1°). Use density per km²: cell area shrinks about 40% from 20°S to 55°S.
 - Whether to drop `low` confidence.
-- Satellites per sensor: all, or one per sensor (e.g. Aqua vs Suomi-NPP, both ~13:30 overpass) for a
-  cleaner comparison.
 - Whether to drop `fire_type` 1-3 and how to flag static sources in NRT rows.
+- Calibration window (proposal: 2012-2021) and reference pair (Aqua vs Suomi-NPP per pass; Terra has no
+  VIIRS counterpart).
 - Whether to group regions into fire regimes (Chaco, Pampas, central Chile, Patagonia) instead of
   administrative regions.
-- Harmonisation candidates to test: scaling ratio per region/month, FRP detection threshold, event-based
-  counts (clustering) instead of point counts.
+- Harmonisation candidates to test: ratio per regime/month, quantile mapping, days with fire, FRP
+  detection threshold, event-based counts (clustering).
+- Which population to use before 2015 (WorldPop covers 2015-2030).
+
+Known issue: `docs/population-and-past-fires.md` says the 2017 season falls in the MODIS-only period, but
+Suomi-NPP has data since January 2012.
 
 Other tooling: the Runpod MCP server is configured in `.mcp.json` (`scripts/runpod_mcp.mjs` reads
 `RUNPOD_API_KEY` from `.env`).
