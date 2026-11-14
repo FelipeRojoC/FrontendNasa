@@ -32,6 +32,20 @@ The yearly files stop at 2025 and do not include NOAA-21. To fill that gap:
 - The query is a bounding box around Chile and Argentina, so it includes points from neighbouring countries. Clip to the country borders when processing.
 - NOAA-21 files are not in the yearly layout (`<SENSOR>/<Country>/`), they only exist under `API_bbox/`.
 
+## Population data (WorldPop)
+
+Used by the risk and impact extension to estimate the population near a fire. See `docs/population-and-past-fires.md`.
+
+```bash
+./scripts/download_population.sh            # 2024 by default
+YEAR=2020 ./scripts/download_population.sh  # any year from 2015 to 2030
+```
+
+- Needs `bash` and `curl`. No account or API key.
+- Source: [WorldPop R2025A](https://hub.worldpop.org/geodata/listing?id=135), constrained population counts, about 100 m per cell.
+- Output: `External_Data_Sources/WorldPop/<Country>/<file>.tif` (git-ignored), one GeoTIFF per country.
+- Safe to re-run: files already downloaded are skipped.
+
 ## Runpod MCP server
 
 `.mcp.json` registers the official [Runpod MCP server](https://github.com/runpod/runpod-mcp) (pinned to 4.12.0) so Claude Code can manage pods, endpoints and volumes.
