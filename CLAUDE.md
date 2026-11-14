@@ -274,3 +274,117 @@ La comparabilidad temporal también depende del período considerado: año calen
 
 ## 7. convenciones
 lee CONTRIBUTING.md para las convenciones
+
+---
+
+# Project status: data pipeline and EDA starting point
+
+> Written in English per `CONTRIBUTING.md`. Last updated 2026-11-14.
+
+## Team direction
+
+- **Core (required by the challenge):** harmonise MODIS and VIIRS hotspots into one comparable series,
+  then a web app with a burn activity calendar per region and date range.
+- **Added value (our proposal):** a risk layer on top of the harmonised series: probability of fire
+  activity per cell and week, and optionally probability of a large fire. Do not promise exact ignition
+  prediction or hectares of damage. Baseline to beat: the historical median per cell and week.
+- Geography: Chile and Argentina only.
+
+## Data pipeline (reproducible from scratch)
+
+```bash
+pip install -r requirements.txt          # pandas, pyarrow, matplotlib, seaborn, shapely
+./scripts/download_firms.sh              # yearly country CSVs, no key (96 files, ~573 MB)
+./scripts/download_firms_api.sh          # 2026 + NOAA-21 via FIRMS Area API, needs FIRMS_MAP_KEY in .env
+./scripts/download_boundaries.sh         # Chile + Argentina region polygons (~118 MB)
+python scripts/build_hotspots.py         # unified Parquet table (~2 min)
+```
+
+| Step | Source | Output |
+|---|---|---|
+| Yearly files | FIRMS Country Yearly Summary (SP), clipped to country by FIRMS | `NASA_Data_Sources/<SENSOR>/<Country>/*.csv` |
+| API files | FIRMS Area API, bbox `-76,-56,-53,-17`, SP while available then NRT, 5 days per request | `NASA_Data_Sources/<SENSOR>/API_bbox/<SENSOR>_<YYYY-MM>.csv` |
+| Boundaries | Chile: geoBoundaries gbOpen CHL ADM1 simplified (16 regions). Argentina: IGN provinces WFS (24 provinces) | `NASA_Data_Sources/boundaries/<Country>.geojson` |
+| Unified table | All of the above | `NASA_Data_Sources/processed/hotspots/year=YYYY/*.parquet` |
+
+`NASA_Data_Sources/` and `.env` are git-ignored. Never commit keys.
+
+Coverage by satellite: MODIS Terra 2000-11 →, Aqua 2002-07 →; VIIRS Suomi-NPP 2012-01 → 2026-11-02
+(decommissioned), NOAA-20 2018-04 →, NOAA-21 2023-03 →. All end 2026-11-14 (download date).
+**MODIS and VIIRS overlap 2012-2026: the harmonisation is calibrated in that window.**
+
+## Unified table: `NASA_Data_Sources/processed/hotspots/`
+
+Read with `pd.read_parquet("NASA_Data_Sources/processed/hotspots")`. `year` comes back as a category
+(it is the partition column): cast with `.astype(int)`.
+
+| Column | Meaning |
+|---|---|
+| `acq_datetime` (UTC), `acq_date`, `acq_time` (HHMM), `year`, `month`, `daynight` (D/N) | Acquisition time |
+| `latitude`, `longitude` | Position |
+| `country`, `admin1` | Country and region/province from the boundary polygons (same borders for every row) |
+| `country_firms` | FIRMS' own country label, yearly rows only |
+| `instrument` (MODIS/VIIRS), `satellite` (Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21) | Sensor |
+| `processing` (SP/NRT), `version` | SP is final; NRT is provisional and gets replaced ~5 months later |
+| `confidence_level` (low/nominal/high), `confidence_pct` (MODIS 0-100), `confidence_raw` | MODIS mapped as <30 low, 30-79 nominal, >=80 high |
+| `bright_mir_k`, `bright_tir_k` | Brightness temperature: MODIS T21/T31, VIIRS I4/I5 (similar, not identical bands) |
+| `frp_mw` | Fire radiative power (MW). Not burned area |
+| `scan_km`, `track_km`, `pixel_area_km2` | Real pixel size (grows towards the swath edge) |
+| `fire_type` | 0 vegetation, 1 volcano, 2 other static land source (e.g. gas flares), 3 offshore. Empty in NRT rows |
+| `source` (`country_yearly`/`api_bbox`), `source_file` | Traceability |
+
+What the merge does: common column names, normalised satellite names and time, common confidence level,
+drops exact duplicates, labels country and region, drops API points outside Chile and Argentina
+(they come from the bounding box). **It does not harmonise MODIS against VIIRS**: the sensor stays a
+column. Harmonisation is the job of the EDA and the next step.
+
+## Facts established so far
+
+- 8,042,380 hotspots after merging (3 exact duplicates and 1,149,423 out-of-country API points dropped).
+- Our country label agrees with FIRMS on 99.98% of yearly rows (1,205 disagree, all at the Chile-Argentina
+  border). 10,476 yearly rows (0.15%, mostly coastal) fall outside the simplified polygons: they keep
+  FIRMS' country and have no `admin1`.
+- **VIIRS detects about 4-6 times more points than MODIS per satellite** (2013: Suomi-NPP 261k, Aqua 46k).
+- After clipping, NOAA-21 matches NOAA-20 (2024: 176,590 vs 179,307).
+- MODIS mixes collection versions (`6.03`, `6.2`, `61.03`, `6.1NRT`): check for jumps when it changes.
+- In SP rows, static land sources (`fire_type` 2) are about 4% of points.
+- 2020 is the peak year for every satellite.
+- Most points are in northern Argentina (Formosa, Santa Fe, Corrientes, Santiago del Estero, Chaco, Salta).
+  La Araucanía is the Chilean region with most points.
+
+## Known limits of the data
+
+- A hotspot is a thermal detection in a pixel, not a fire. One fire can produce many points; VIIRS
+  (375 m) produces more points per fire than MODIS (1 km).
+- No observation metadata (clouds, number of overpasses): absence of points does not prove absence of fire.
+- No universal MODIS→VIIRS conversion factor exists (literature, see the research section above).
+- Recent 2026 months are NRT: provisional and without `fire_type`. Re-running the API script refreshes them.
+- Boundaries are simplified (~100 m tolerance). IGN's Tierra del Fuego polygon includes Malvinas and the
+  Antarctic claim.
+
+## Gotchas found while building it
+
+- geoBoundaries' Argentina ADM1 is missing Entre Ríos (and misspells La Rioja): do not use it.
+- geoBoundaries' Chile names are mis-encoded (`RegiÃ³n`); `build_hotspots.py` fixes them.
+- The FIRMS Area API omits the final newline in responses; `download_firms_api.sh` handles it now.
+  Files downloaded before that fix were repaired (419 rows recovered).
+- Do not run project scripts with `python -I`: pandas is installed in the user site-packages and `-I` hides it.
+- `claude` CLI is not on PATH in the desktop app; MCP servers are registered in `.mcp.json`.
+
+## EDA: where to start
+
+The first plan is in `docs/eda-plan.md` (quality, MODIS vs VIIRS in the overlap, temporal patterns /
+burn calendar, spatial patterns, inputs for the risk model). Decisions still open before the new plan:
+
+- Grid resolution (start with 0.25°, also test 0.1°) and time step (month, then week).
+- Whether to drop `low` confidence.
+- Satellites per sensor: all, or one per sensor (e.g. Aqua vs Suomi-NPP, both ~13:30 overpass) for a
+  cleaner comparison.
+- Whether to drop `fire_type` 1-3 and how to flag static sources in NRT rows.
+- Whether to group regions into fire regimes (Chaco, Pampas, central Chile, Patagonia) instead of
+  administrative regions.
+- Harmonisation candidates to test: scaling ratio per region/month, FRP detection threshold, event-based
+  counts (clustering) instead of point counts.
+
+Other tooling: the Runpod MCP server is configured in `.mcp.json` (`scripts/runpod_mcp.mjs` reads
+`RUNPOD_API_KEY` from `.env`).
