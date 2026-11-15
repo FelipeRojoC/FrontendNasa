@@ -7,8 +7,141 @@ It is a plan: no model in it has been trained. Every statement is marked as one 
 - **Hypothesis:** an explanation that was not tested.
 - **Recommendation:** a choice proposed here, open to change.
 
-Two people do the work, each with their own files: **Vicente** builds the data and the evaluation
-(lane A), **Felipe** selects features and trains the models (lane B). Section 11 has the split.
+**Scope for the deadline: section 0.** It replaces the four models and the two-person split of the
+sections below, which stay as the full version of the brief, to be done only if time is left.
+
+## 0. Scope decided for the deadline
+
+Decided on the night of 2026-11-14, with about 13 hours left and the interface still to build.
+
+| Topic | Full brief (sections 3 to 8) | Scope for the deadline |
+|---|---|---|
+| Models | Four: country by season group | **Two: one for Chile, one for Argentina, all months** (experiment E1 of section 3 becomes the design) |
+| Algorithm | LightGBM, XGBoost and Random Forest | LightGBM. The other two only if time is left; the training code is the same |
+| Feature selection, SHAP, tuning | 12 runs | Not done. Importance by gain and one permutation run, as information |
+| Weather features | Yes | Only if the rest is finished |
+| Season in the report | One model per season | Each model is scored on its two season groups (September-February, March-August), so the report still shows where it misses more |
+
+**Why one model per country.** The season cut of the brief runs through the fire season of both
+countries (section 3): a seasonal model would see half of each season. One model per country sees
+the whole year and needs no change of model on 1 March or 1 September.
+
+**Season and date as features (recommendation).** The worry is that the model learns "it is August"
+and not the conditions. Three different things are involved:
+
+| Feature | Decision | Reason |
+|---|---|---|
+| Month, sine and cosine of the day of the year | **Left out** | They let the model learn the calendar directly. In the weekly model, position and season together were 2.8% of the gain, so little is lost |
+| Year | **Never a feature** | A tree cannot follow a year it has not seen |
+| Day of the week | Kept | It is not the season: fire-days fall 28 to 37% on Sundays |
+| Historical rate of the cell for that time of the year (`hist_`) | **Kept** | It is not the date: it says how often this cell had fire at this time of the year, in earlier years only. It was 56% of the gain of the weekly model. Without it the model does not beat the baselines |
+
+Seasonality is real, not a bias: August in the Chaco does burn more. Removing the calendar features
+does not hide it from the model, because the historical rate and recent fire carry it. What removing
+them does is make the model depend on what the cell does, not on what the calendar says. One extra
+training settles it: the same model with the calendar features in. Keep whichever has fewer false
+negatives at the same number of alerts on `tune`.
+
+**Four lanes, no shared files.** Each lane is one branch and one pull request (or more, small ones).
+
+| Lane | Who | Output | Depends on |
+|---|---|---|---|
+| Data | Vicente | `daily/panel.parquet` and, first, `risk/cells_daily.parquet` with the baseline | Nothing |
+| Evaluation | Sebastián | `scripts/daily_eval.py` | Nothing |
+| Models | Sebastián or Vicente, on Runpod. Whoever is free first says so in the chat; one person only | Two models, `risk/cells_daily.parquet` with the model, `risk/daily_metrics.json` | The panel and the evaluation module |
+| Interface | David | A next-day layer in the web app | The baseline file |
+
+The pitch is Sebastián's. Video, project page and deployment still need an owner.
+
+**The file every lane meets at:** `NASA_Data_Sources/processed/risk/cells_daily.parquet`.
+
+| Column | Meaning |
+|---|---|
+| `burn_date` | The day predicted |
+| `cell_lat`, `cell_lon` | South-west corner of the 0.25° cell |
+| `probability` | From the model; from the historical rate while there is no model |
+| `baseline_probability` | Historical rate of the cell for that time of the year |
+| `alert` | 1 if the cell is flagged; while there is no model, 1 if the cell or one of its 8 neighbours had fire the day before |
+
+It holds the predicted days of 2023 to 2025 (never seen in training, good for showing past cases)
+and the day after the last complete day. The interface reads only these columns, so the model
+replaces the baseline file without any change in the app. If no model is scored when the app is
+frozen for delivery, the app ships with the baseline file and says so.
+
+### Card 1. Data (Vicente)
+
+- **Files:** `scripts/daily_panel.py`, `tests/test_daily_panel.py`.
+- **Steps:**
+  1. Fire per cell and day from `harmonized/hotspots_kept.parquet`: Suomi-NPP rows, `burn_date` from
+     2012-02-01, cell = `floor(coordinate / 0.25) * 0.25`. Days in `quality/outage_days.csv` for
+     Suomi-NPP are "not observed". For the last complete day of 2026 the satellite is NOAA-20.
+  2. Baselines (section 4.3) and `risk/cells_daily.parquet` with them. **Hand this over first.**
+  3. The panel of section 4.1 for predicted days 2014 to 2025, with `lag_`, `nbr_`, `hist_`, `geo_`
+     latitude and longitude, and `cal_dow`. Add `cal_month`, `cal_doy_sin`, `cal_doy_cos` too: the
+     default model does not use them, the comparison run does. Keep the `segment` column: the
+     report breaks the scores down by it.
+  4. The same feature rows for the day after the last complete day, with no target, for the live outlook.
+- **Reuse:** `load_outages`, `target_outage_days`, `eligible_cells` (`scripts/risk_baseline.py`),
+  `neighbour_ids` (`scripts/risk_model.py`).
+- **Done when:** fire cell-days per segment match section 3 once outage days are removed; a test
+  proves that no feature reads the predicted day or later; `p_persist` gives recall and precision
+  near 33% and `p_near` recall near 64.7%.
+- **Do not:** add weather or population now; use `acq_date`, `year` or `month` (they are UTC).
+
+### Card 2. Evaluation (Sebastián)
+
+- **Files:** `scripts/daily_eval.py`, `tests/test_daily_eval.py`.
+- **Steps:**
+  1. `pick_threshold(y, p, min_recall)`: the highest threshold whose recall is at least `min_recall`.
+  2. `scores(y, p, threshold)`: TN, FP, FN, TP, recall, false negative rate, precision, F2, average
+     precision, false alarm rate, alerts per day, rows, positives.
+  3. `breakdown(df, p_col, threshold, by)`: the same per season group, year, month, region and `new_cell`.
+  4. A command that reads the panel and a predictions file and writes `risk/daily_metrics.json`
+     and a table in Markdown, for the model and the three baselines.
+- **Done when:** tests with hand-made cases pass (including a threshold tie and a segment with no
+  positives); the baselines have their table as soon as the panel exists.
+- **Do not:** choose a threshold on test years.
+
+### Card 3. Models (Sebastián or Vicente, on Runpod)
+
+- **Files:** `scripts/daily_train.py`, `tests/test_daily_train.py`. `lightgbm` is already in `requirements.txt`.
+- **Steps:**
+  1. For Chile and for Argentina: LightGBM with the `PARAMS` of `scripts/risk_model.py`, fitted on
+     `train`, early stopping on `tune` by average precision. Features: every `lag_`, `nbr_`, `hist_`
+     and `geo_` column and `cal_dow`.
+  2. The comparison run: the same with `cal_month`, `cal_doy_sin`, `cal_doy_cos` added.
+  3. Threshold of each run on `tune` at recall 0.80 (`daily_eval.pick_threshold`). Keep the run
+     with fewer alerts per day. Check it against `p_near` and `p_hist`.
+  4. Refit the kept run on `train` plus `tune` with the number of rounds of step 1. Score `test`
+     once. Predict the day after the last complete day.
+  5. Write `daily/predictions.parquet` (`burn_date`, `cell_lat`, `cell_lon`, `model`, `probability`),
+     `risk/cells_daily.parquet` and `risk/daily_metrics.json`.
+- **Runpod:** a CPU pod with 16 or more cores and 32 GB. Copy the repository and `daily/panel.parquet`.
+  `pip install -r requirements.txt`. Never copy `.env` or keys. Stop the pod when the files are back.
+- **Done when:** a test trains on a small made-up panel and writes the columns of the contract; the
+  metrics file has the model, the comparison run and the three baselines, per country, season
+  group and test year.
+- **Do not:** tune on test years; add XGBoost, Random Forest or SHAP before this is delivered.
+
+### Card 4. Interface (David)
+
+- **Files:** `backend/main.py`, `tests/test_api.py`, `frontend/src/`. The app is already on `main`
+  (run it with `docs/eda-runbook.md`); do not start from the branch `feat/frontend-setup`.
+- **Steps:**
+  1. Backend: `GET /api/risk/daily?date=`, like `/api/risk` (the weekly outlook), reading
+     `risk/cells_daily.parquet`; add the available days to `/api/meta`. With no file, the app
+     must still start, as it does today without the weekly file.
+  2. Frontend: a "Next day" layer on the map next to the weekly outlook, with the same legend
+     (`RISK_BINS` in `frontend/src/api.ts`), the cells with `alert` = 1 outlined, and a day picker
+     that opens on the newest day.
+  3. Circles of 5 and 10 km around the hotspots of the last complete day inside the selected area,
+     with this note: "Of the hotspots of the next day, 38% fall within 5 km of a hotspot of today
+     and 50% within 10 km (2013-2025)."
+- **Wording:** "Where fire activity is most likely tomorrow". Never "where a fire will start". Show
+  the sentence about no hotspots from `docs/eda-findings.md` ("Observation").
+- **Done when:** `pytest` passes with a small `cells_daily.parquet` made in the test; the layer shows
+  with the baseline file; replacing the file with the model's changes the map and nothing else.
+- **Do not:** compute anything about risk in the frontend; change the calendar views.
 
 ## 1. Read this first
 
